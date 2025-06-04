@@ -159,7 +159,20 @@ h1 {
 .rectangle-boxes > .rectangle-box:nth-child(4) {
     background-color: #e74c3c; /* red */
 }
-
+.export-button {
+    background-color: #3498db;
+    border: none;
+    color: white;
+    padding: 10px 16px;
+    margin: 8px 0;
+    border-radius: 5px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background-color 0.3s ease;
+}
+.export-button:hover {
+    background-color: #2980b9;
+}
 
 
 </style>
@@ -297,7 +310,8 @@ h1 {
          <!-- View status -->
         <div id="Tenantstatus"  class="form-section">
             <h3>See The  Tenant Status  Here</h3> 
-            <table class="table table-bordered table-hover align-middle mb-0">
+            <button class="export-button" onclick="exportTableToCSV('TenantstatusTable', 'Tenantstatus.csv')">Export Tenantstatus</button>
+            <table class="table table-bordered table-hover align-middle mb-0" id="TenantstatusTable" >
                 <thead class="table-secondary">
                     <tr>
                         <th>ID</th><th>tenant_id</th><th>balance </th><th>kwh </th><th>status</th>
@@ -365,8 +379,9 @@ h1 {
     <!-- Tenants -->
     <div id="tenants" class="form-section">
         <h4 class="section-header"><i class="fas fa-list"></i> Tenant List</h4>
+        <button class="export-button" onclick="exportTableToCSV('tenantsTable', 'tenants.csv')">Export Tenants</button>
         <div class="table-responsive">
-            <table class="table table-bordered table-hover align-middle mb-0">
+            <table class="table table-bordered table-hover align-middle mb-0" id="tenantsTable">
                 <thead class="table-secondary">
                     <tr>
                         <th>ID</th><th>Name</th><th>Phone</th><th>House</th><th>Balance (RWF)</th><th>Action</th>
@@ -404,8 +419,9 @@ h1 {
     <!-- Transactions -->
     <div id="transactions" class="form-section">
         <h4 class="section-header"><i class="fas fa-exchange-alt"></i> Recharge Transactions</h4>
+        <button class="export-button" onclick="exportTableToCSV('transactionTable', 'transaction.csv')">Export transaction</button>
         <div class="table-responsive">
-            <table class="table table-bordered table-hover align-middle mb-0">
+            <table class="table table-bordered table-hover align-middle mb-0" id="transaction" >
                 <thead class="table-secondary">
                     <tr>
                         <th>ID</th><th>Tenant ID</th><th>Charge</th><th>kWh</th><th>Date</th><th>Action</th>
@@ -433,8 +449,9 @@ h1 {
     <!-- new coment -->
     <div id="Comments" class="form-section">
         <h4 class="section-header"><i class="fas fa-comments"></i> Comment from Tenants</h4>
+        <button class="export-button" onclick="exportTableToCSV('CommentTable', 'Comment.csv')">Export Comment</button>
             <div class="table-responsive">
-            <table class="table table-bordered table-hover align-middle mb-0">
+            <table class="table table-bordered table-hover align-middle mb-0" id="CommentTable">
                 <thead class="table-secondary">
                     <tr>
                         <th>ID</th><th>Tenant ID</th><th>Comment</th><th>Date</th>
@@ -532,6 +549,7 @@ h1 {
                 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
 <script>
     function editLandlord(id, name, phone, address) {
     document.getElementById('editLandlordId').value = id;
@@ -581,6 +599,30 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 </script>
+    <script>
+    function downloadCSV(csv, filename) {
+        let csvFile = new Blob([csv], { type: "text/csv" });
+        let downloadLink = document.createElement("a");
+        downloadLink.download = filename;
+        downloadLink.href = window.URL.createObjectURL(csvFile);
+        downloadLink.style.display = "none";
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+    }
+
+    function exportTableToCSV(tableId, filename) {
+        let csv = [];
+        let rows = document.querySelectorAll(`#${tableId} tr`);
+        
+        for (let row of rows) {
+            let cols = row.querySelectorAll("td, th");
+            let rowData = Array.from(cols).map(col => `"${col.innerText.replace(/"/g, '""')}"`);
+            csv.push(rowData.join(","));
+        }
+
+        downloadCSV(csv.join("\n"), filename);
+    }
+    </script>
 
 </body>
 </html>
