@@ -1,6 +1,5 @@
-
-body {
-    background-color: #f8f9fa;
+ body {
+    background-color:rgb(247, 249, 251);
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 .sidebar {
@@ -10,7 +9,7 @@ body {
     left: 0;
     width: 220px;
     padding-top: 56px;
-    background-color: #0d6efd;
+    background-color:rgb(7, 33, 46);
     color: #fff;
     overflow-y: auto;
     transition: width 0.3s;
@@ -26,7 +25,7 @@ body {
     transition: background 0.2s;
 }
 .sidebar a:hover {
-    background-color: #095bb5;
+    background-color:rgb(7, 33, 46);;
     text-decoration: none;
 }
 .sidebar a i {
@@ -56,14 +55,14 @@ body {
     display: flex;
     align-items: center;
     margin-bottom: 15px;
-    border-left: 4px solid #0d6efd;
+    border-left: rgb(7, 33, 46);;
     padding-left: 10px;
     font-weight: 600;
     font-size: 1.25rem;
 }
 .section-header i {
     margin-right: 10px;
-    color: #0d6efd;
+    color:rgb(7, 33, 46);;
 }
 .form-section {
     background: #fff;
@@ -80,4 +79,65 @@ body {
 .form-section,
 #welcome {
     display: none;
+}
+.navbar{ 
+    background-color:rgb(7, 33, 46);
+}
+h1 {
+  text-align: center;
+}
+/* 🔒 Hide all sections by default */
+.form-section {
+    display: none;
+}
+
+/* ✅ Show welcome and comment sections on load */
+#welcome,
+#comment {
+    display: block !important;
+}
+.rectangle-boxes {
+    display: flex;
+    flex-wrap: nowrap; /* no wrapping */
+    gap: 20px;
+    margin-bottom: 30px;
+    /* remove overflow-x if no scroll wanted */
+    overflow-x: hidden;
+}
+
+.rectangle-box {
+    flex: 1 1 0;
+    background-color: #ffffff;
+    border-left: 5px solid rgb(7, 33, 46);
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    padding: 20px;
+    border-radius: 8px;
+    font-size: 1.1rem;
+    min-width: 0;
+}
+.rectangle-boxes > .rectangle-box:nth-child(1) {
+    background-color: #f0a500; /* orange */
+}
+.rectangle-boxes > .rectangle-box:nth-child(2) {
+    background-color: #00a8cc; /* blue */
+}
+.rectangle-boxes > .rectangle-box:nth-child(3) {
+    background-color: #9b59b6; /* purple */
+}
+.rectangle-boxes > .rectangle-box:nth-child(4) {
+    background-color: #e74c3c; /* red */
+}
+.export-button {
+    background-color: #3498db;
+    border: none;
+    color: white;
+    padding: 10px 16px;
+    margin: 8px 0;
+    border-radius: 5px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background-color 0.3s ease;
+}
+.export-button:hover {
+    background-color: #2980b9;
 }
