@@ -40,20 +40,7 @@ $comments = $conn->query("SELECT * FROM comments WHERE tenant_id = $tenant_id OR
   <title>Tenant Dashboard</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
-  <style>
-    .dashboard { max-width: 700px; margin: 50px auto; padding: 30px; background: #fff; border-radius: 12px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-    body { background-color:rgb(250, 252, 253); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-    .sidebar { position: fixed; top: 0; bottom: 0; left: 0; width: 220px; padding-top: 56px; background-color:rgb(7, 33, 46); color: #444; overflow-y: auto; transition: width 0.3s; z-index: 1020; }
-    .sidebar a { display: flex; align-items: center; padding: 12px 20px; color: #fff; text-decoration: none; font-weight: 500; transition: background 0.2s; }
-    .sidebar a:hover { background-color:rgb(7, 33, 46); text-decoration: none; }
-    .sidebar a i { margin-right: 10px; width: 20px; text-align: center; }
-    .content { margin-left: 220px; padding: 20px; margin-top: 56px; transition: margin-left 0.3s; }
-    @media (max-width: 992px) {
-      .sidebar { position: relative; width: 100%; height: auto; padding-top: 0; }
-      .content { margin-left: 0; margin-top: 20px; }
-    }
-    .form-section, #welcome { display: none; }
-  </style>
+  <link rel="stylesheet" type="text/css" href="css/tenantstyle.css">
 </head>
 <body>
 <!-- Navbar -->
@@ -119,7 +106,8 @@ $comments = $conn->query("SELECT * FROM comments WHERE tenant_id = $tenant_id OR
     <!-- Transaction History Section -->
     <div id="landlord" class="form-section">
       <h5 class="mt-4">Transaction History</h5>
-      <table class="table table-bordered">
+        <button class="export-button" onclick="exportTableToCSV('TransactionHistoryTable', 'TransactionHistory.csv')">Export Transaction History</button>
+      <table class="table table-bordered" id="TransactionHistoryTable">
         <thead>
           <tr>
             <th>Date</th>
@@ -158,5 +146,30 @@ $comments = $conn->query("SELECT * FROM comments WHERE tenant_id = $tenant_id OR
     showSection(active);
   };
 </script>
+
+    <script>
+    function downloadCSV(csv, filename) {
+        let csvFile = new Blob([csv], { type: "text/csv" });
+        let downloadLink = document.createElement("a");
+        downloadLink.download = filename;
+        downloadLink.href = window.URL.createObjectURL(csvFile);
+        downloadLink.style.display = "none";
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+    }
+
+    function exportTableToCSV(tableId, filename) {
+        let csv = [];
+        let rows = document.querySelectorAll(`#${tableId} tr`);
+        
+        for (let row of rows) {
+            let cols = row.querySelectorAll("td, th");
+            let rowData = Array.from(cols).map(col => `"${col.innerText.replace(/"/g, '""')}"`);
+            csv.push(rowData.join(","));
+        }
+
+        downloadCSV(csv.join("\n"), filename);
+    }
+    </script>
 </body>
 </html>
