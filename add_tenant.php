@@ -19,6 +19,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header("Location: landlord_dashboard.php");
         exit();
     }
+// Validate phone number
+if (!preg_match('/^07[2839]\d{7}$/', $phone)) {
+    $_SESSION['tenant_status'] = ['type' => 'danger', 'message' => 'Invalid phone number. It must be 10 digits and start with 078, 079, 072, or 073.'];
+    header("Location: landlord_dashboard.php");
+    exit();
+}
 
     // 🔍 Check if house_number is already occupied for this landlord
     $check = $conn->prepare("SELECT id FROM tenants WHERE landlord_id = ? AND house_number = ?");

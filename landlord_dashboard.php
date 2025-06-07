@@ -38,6 +38,9 @@ $cashpower = $conn->query("SELECT * FROM cashpower");
     <div class="flex-grow-1 text-center">
       <h1 class="text-white m-0">Smart Electricity Management System</h1>
     </div>
+    <a href="landlord_profile.php" class="nav-link text-warning ms-3">
+      <i class="fas fa-user-circle" style="font-size: 20px; color: #4f46e5;"></i> Profile 
+    </a>
     <a href="logout.php" class="nav-link text-warning ms-3">
       <i class="fas fa-sign-out-alt"></i> Logout
     </a>
@@ -225,7 +228,7 @@ $cashpower = $conn->query("SELECT * FROM cashpower");
     <!-- Tenants -->
     <div id="tenants" class="form-section">
         <h4 class="section-header"><i class="fas fa-list"></i> Tenant List</h4>
-        <button class="export-button" onclick="exportTableToCSV('tenantsTable', 'tenants.csv')">Export Tenants</button>
+        <button class="export-button" onclick="exportTableToCSV('tenantsTable', 'tenants.csv')">Export Tenants List</button>
         <div class="table-responsive">
             <table class="table table-bordered table-hover align-middle mb-0" id="tenantsTable">
                 <thead class="table-secondary">

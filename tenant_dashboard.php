@@ -49,6 +49,9 @@ $comments = $conn->query("SELECT * FROM comments WHERE tenant_id = $tenant_id OR
     <div class="flex-grow-1 text-center">
       <h1 class="text-white m-0">Smart Electricity Management System</h1>
     </div>
+    <a href="tenant_profile.php" class="nav-link text-warning ms-3">
+      <i class="fas fa-user-circle" style="font-size: 20px; color: #4f46e5;"></i> Profile 
+    </a>
     <a href="logout.php" class="nav-link text-warning ms-3"><i class="fas fa-sign-out-alt"></i> Logout</a>
   </div>
 </nav>

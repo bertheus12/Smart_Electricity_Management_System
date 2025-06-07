@@ -21,6 +21,17 @@
         .form-title {
             margin-bottom: 25px;
         }
+        .forgot-password {
+            text-align: center;
+            margin-top: 15px;
+        }
+        .forgot-password a {
+            color: #0d6efd;
+            text-decoration: none;
+        }
+        .forgot-password a:hover {
+            text-decoration: underline;
+        }
     </style>
 </head>
 <body>
@@ -44,6 +55,10 @@
             </div>
             <button type="submit" class="btn btn-primary w-100">Login</button>
         </form>
+
+        <div class="forgot-password">
+            <a href="forgot_password.php">Forgot Password?</a>
+        </div>
     </div>
 </body>
 </html>
