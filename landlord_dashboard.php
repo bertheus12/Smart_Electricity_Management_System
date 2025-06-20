@@ -53,7 +53,6 @@ $cashpower = $conn->query("SELECT * FROM cashpower");
 <div class="sidebar d-none d-lg-block">
   <div class="d-flex flex-column p-3" style="height:80vh;">
     <h4 class="text-white mb-4"><i class="fas fa-user-shield me-2"></i> Welcome, <?php echo $tenant['name']; ?> </h4>
-    <a href="#landlords"><i class="fas fa-users-cog"></i> View info</a>
     <a href="#addTenant"><i class="fas fa-user-plus"></i> Add Tenant</a>
     <a href="#Tenantstatus"><i class="fas fa-user"></i> Tenant status</a>
     <a href="#recharge"><i class="fas fa-bolt"></i> Recharge</a>
@@ -158,7 +157,7 @@ $cashpower = $conn->query("SELECT * FROM cashpower");
 
          <!-- View status -->
         <div id="Tenantstatus"  class="form-section">
-            <h3>See The  Tenant Status  Here</h3> 
+            <h3><i class="fas fa-user"></i>Tenant Status </h3> 
             <button class="export-button" onclick="exportTableToCSV('TenantstatusTable', 'Tenantstatus.csv')">Export Tenantstatus</button>
             <table class="table table-bordered table-hover align-middle mb-0" id="TenantstatusTable" >
                 <thead class="table-secondary">
