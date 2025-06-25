@@ -141,3 +141,24 @@ h1 {
 .export-button:hover {
     background-color: #2980b9;
 }
+/* Add to your CSS */
+.power-status {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-right: 5px;
+}
+
+.power-connected {
+    background-color: #28a745; /* Green for connected */
+    box-shadow: 0 0 5px #28a745;
+}
+
+.power-disconnected {
+    background-color: #dc3545; /* Red for disconnected */
+}
+
+.power-unknown {
+    background-color: #6c757d; /* Gray for unknown status */
+}

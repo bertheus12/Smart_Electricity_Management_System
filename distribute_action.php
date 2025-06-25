@@ -1,187 +1,128 @@
 <?php
-ob_start();
+ob_start(); // Prevents accidental output
 session_start();
 include 'database.php';
 
-if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'landlord') {
-    header("Location: login.php");
-    exit();
+header('Content-Type: application/json');
+
+// Enable detailed error reporting (for debugging)
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
+$response = [
+    'success' => false,
+    'html' => ''
+];
+
+// Check request method
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    $response['html'] = '<div class="alert alert-danger">❌ Invalid request method.</div>';
+    echo json_encode($response);
+    exit;
 }
 
-$landlord_id = $_SESSION['user_id'];
+// Input validation
+$cashpower_id = intval($_POST['cashpower_id'] ?? 0);
+$tenant_ids = $_POST['tenant_ids'] ?? [];
+$charges = $_POST['charges'] ?? [];
 
-// Fetch tenants for the landlord
-$tenants = [];
-$stmtTenants = $conn->prepare("SELECT id, name FROM tenants WHERE landlord_id = ?");
-$stmtTenants->bind_param("i", $landlord_id);
-$stmtTenants->execute();
-$resultTenants = $stmtTenants->get_result();
-while ($row = $resultTenants->fetch_assoc()) {
-    $tenants[] = $row;
+if ($cashpower_id <= 0 || empty($tenant_ids) || empty($charges) || count($tenant_ids) !== count($charges)) {
+    $response['html'] = '<div class="alert alert-danger">⚠️ Invalid input. Please select valid tenants and charges.</div>';
+    echo json_encode($response);
+    exit;
 }
-$stmtTenants->close();
 
-// Fetch available (unused) cashpower
-$cashpowers = [];
-$stmtCashpower = $conn->prepare("SELECT id, amount, unit, balance FROM cashpower WHERE balance > 0");
-$stmtCashpower->execute();
-$resultCashpower = $stmtCashpower->get_result();
-while ($row = $resultCashpower->fetch_assoc()) {
-    $cashpowers[] = $row;
+// Fetch cashpower info
+$stmt = $conn->prepare("SELECT amount, unit, balance FROM cashpower WHERE id = ?");
+$stmt->bind_param("i", $cashpower_id);
+$stmt->execute();
+$cashpower = $stmt->get_result()->fetch_assoc();
+$stmt->close();
+
+if (!$cashpower) {
+    $response['html'] = '<div class="alert alert-danger">❌ Cashpower not found.</div>';
+    echo json_encode($response);
+    exit;
 }
-$stmtCashpower->close();
-?>
 
-<h2>Distribute Power from Cashpower</h2>
-<div id="distributeMessage">
-<?php
-if (isset($_SESSION['distribute_status'])) {
-    $status = $_SESSION['distribute_status'];
-    echo "<div class='alert alert-{$status['type']}' role='alert'>{$status['message']}</div>";
-    unset($_SESSION['distribute_status']);
+$balance = floatval($cashpower['balance']);
+$total_charge = array_sum(array_map('floatval', $charges));
+
+// Check if enough balance
+if ($total_charge > $balance) {
+    $response['html'] = '<div class="alert alert-danger">
+        ❌ <strong>Insufficient Balance:</strong><br>
+        Required: <strong>' . number_format($total_charge, 2) . ' RWF</strong><br>
+        Available: <strong>' . number_format($balance, 2) . ' RWF</strong>
+    </div>';
+    echo json_encode($response);
+    exit;
 }
-?>
-</div>
 
-<form id="distributeForm" class="distribute-form" method="POST">
-    <div class="form-group">
-        <label>Select Cashpower:</label>
-        <select name="cashpower_id" required>
-            <option value="">-- Select Cashpower --</option>
-            <?php foreach ($cashpowers as $cp): ?>
-                <option value="<?= $cp['id'] ?>">
-                    ID <?= $cp['id'] ?> - <?= $cp['unit'] ?> kWh - <?= $cp['balance'] ?> RWF remaining
-                </option>
-            <?php endforeach; ?>
-        </select>
-    </div>
+// Prepare queries
+$stmtInsert = $conn->prepare("INSERT INTO transactions (tenant_id, charge, kw, created_at) VALUES (?, ?, ?, NOW())");
+$stmtUpdateBalance = $conn->prepare("UPDATE cashpower SET balance = balance - ? WHERE id = ?");
+$stmtUpdatePower = $conn->prepare("
+    INSERT INTO tenant_power (tenant_id, current_kw, status) 
+    VALUES (?, ?, ?) 
+    ON DUPLICATE KEY UPDATE 
+        current_kw = current_kw + VALUES(current_kw),
+        status = VALUES(status)
+");
 
-    <div class="form-group" style="flex: 1 1 100%;">
-        <div id="tenant-charge-container">
-            <div>
-                <label>Tenant:</label>
-                <select name="tenant_ids[]" required>
-                    <option value="">-- Select Tenant --</option>
-                    <?php foreach ($tenants as $t): ?>
-                        <option value="<?= $t['id'] ?>"> <?= htmlspecialchars($t['name']) ?> (ID <?= $t['id'] ?>)</option>
-                    <?php endforeach; ?>
-                </select>
-                <label>Charge (RWF):</label>
-                <input type="number" name="charges[]" step="0.01" required>
-            </div>
-        </div>
-    </div>
+$successCount = 0;
+$errors = [];
 
-    <div class="form-group">
-        <button type="button" onclick="addTenantCharge()">➕ Add Another Tenant</button>
-    </div>
+for ($i = 0; $i < count($tenant_ids); $i++) {
+    $tenant_id = intval($tenant_ids[$i]);
+    $charge = floatval($charges[$i]);
+    $kw = ($cashpower['unit'] * $charge) / $cashpower['amount'];
+    $status = $kw > 0 ? 'connected' : 'disconnected';
 
-    <div class="form-group">
-        <button type="submit">🚀 Distribute</button>
-    </div>
-</form>
+    try {
+        $conn->begin_transaction();
 
-<style>
-/* [Styles remain unchanged] */
-</style>
-
-<script>
-function addTenantCharge() {
-    const container = document.getElementById('tenant-charge-container');
-    const div = document.createElement('div');
-    div.innerHTML = `
-        <label>Tenant:</label>
-        <select name="tenant_ids[]" required>
-            <option value="">-- Select Tenant --</option>
-            <?php foreach ($tenants as $t): ?>
-                <option value="<?= $t['id'] ?>"> <?= htmlspecialchars($t['name']) ?> (ID <?= $t['id'] ?>)</option>
-            <?php endforeach; ?>
-        </select>
-        <label>Charge (RWF):</label>
-        <input type="number" name="charges[]" step="0.01" required>
-        <button type="button" class="remove-btn" onclick="this.parentNode.remove()">❌ Remove</button>
-    `;
-    container.appendChild(div);
-}
-</script>
-
-<?php
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $cashpower_id = intval($_POST['cashpower_id']);
-    $tenant_ids = $_POST['tenant_ids'] ?? [];
-    $charges = $_POST['charges'] ?? [];
-
-    if ($cashpower_id <= 0 || empty($tenant_ids) || empty($charges) || count($tenant_ids) !== count($charges)) {
-        $_SESSION['distribute_status'] = ['type' => 'danger', 'message' => 'Invalid input. Please select valid tenants and charges.'];
-        header("Location: " . $_SERVER['PHP_SELF']);
-        exit();
-    }
-
-    $stmt = $conn->prepare("SELECT amount, unit, balance FROM cashpower WHERE id = ?");
-    $stmt->bind_param("i", $cashpower_id);
-    $stmt->execute();
-    $cashpower = $stmt->get_result()->fetch_assoc();
-    $stmt->close();
-
-    if (!$cashpower) {
-        $_SESSION['distribute_status'] = ['type' => 'danger', 'message' => 'Cashpower not found.'];
-        header("Location: " . $_SERVER['PHP_SELF']);
-        exit();
-    }
-
-    $amount = $cashpower['amount'];
-    $unit = $cashpower['unit'];
-    $balance = $cashpower['balance'];
-
-    $total_charge = array_sum(array_map('floatval', $charges));
-    if ($total_charge > $balance) {
-        $_SESSION['distribute_status'] = ['type' => 'danger', 'message' => 'Total charge exceeds available balance in cashpower.'];
-        header("Location: " . $_SERVER['PHP_SELF']);
-        exit();
-    }
-
-    $stmtInsert = $conn->prepare("INSERT INTO transactions (tenant_id, charge, kw, created_at) VALUES (?, ?, ?, NOW())");
-    $stmtUpdateBalance = $conn->prepare("UPDATE cashpower SET balance = balance - ? WHERE id = ?");
-    $stmtUpdatePower = $conn->prepare("INSERT INTO tenant_power (tenant_id, current_kw, status) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE current_kw = current_kw + VALUES(current_kw), status = VALUES(status)");
-
-    $successCount = 0;
-    $errors = [];
-
-    for ($i = 0; $i < count($tenant_ids); $i++) {
-        $tenant_id = intval($tenant_ids[$i]);
-        $charge = floatval($charges[$i]);
-        $kw = ($unit * $charge) / $amount;
-
+        // Insert into transactions
         $stmtInsert->bind_param("idd", $tenant_id, $charge, $kw);
-        if ($stmtInsert->execute()) {
-            $stmtUpdateBalance->bind_param("di", $charge, $cashpower_id);
-            $stmtUpdateBalance->execute();
-
-            $status = $kw > 0 ? 'connected' : 'disconnected';
-            $stmtUpdatePower->bind_param("ids", $tenant_id, $kw, $status);
-            $stmtUpdatePower->execute();
-
-            $successCount++;
-        } else {
-            $errors[] = "Error for tenant $tenant_id: " . htmlspecialchars($stmtInsert->error);
+        if (!$stmtInsert->execute()) {
+            throw new Exception("Insert failed for tenant ID: $tenant_id");
         }
+
+        // Update balance
+        $stmtUpdateBalance->bind_param("di", $charge, $cashpower_id);
+        if (!$stmtUpdateBalance->execute()) {
+            throw new Exception("Balance update failed");
+        }
+
+        // Update tenant power
+        $stmtUpdatePower->bind_param("ids", $tenant_id, $kw, $status);
+        if (!$stmtUpdatePower->execute()) {
+            throw new Exception("Tenant power update failed");
+        }
+
+        $conn->commit();
+        $successCount++;
+
+    } catch (Exception $e) {
+        $conn->rollback();
+        $errors[] = $e->getMessage();
     }
-
-    $stmtInsert->close();
-    $stmtUpdateBalance->close();
-    $stmtUpdatePower->close();
-
-    $message = "$successCount transaction(s) successful.";
-    if ($errors) {
-        $message .= " Errors: " . implode(" | ", $errors);
-        $_SESSION['distribute_status'] = ['type' => 'danger', 'message' => $message];
-    } else {
-        $_SESSION['distribute_status'] = ['type' => 'success', 'message' => $message];
-    }
-
-    header("Location: " . $_SERVER['PHP_SELF']);
-    exit();
 }
 
-ob_end_flush();
-?>
+$stmtInsert->close();
+$stmtUpdateBalance->close();
+$stmtUpdatePower->close();
+
+// Generate HTML response
+if ($successCount > 0) {
+    $response['success'] = true;
+    $response['html'] .= '<div class="alert alert-success">✅ ' . $successCount . ' tenant(s) updated. Total: ' . number_format($total_charge, 2) . ' RWF.</div>';
+}
+
+if (!empty($errors)) {
+    $response['html'] .= '<div class="alert alert-danger"><strong>❌ Errors:</strong><ul><li>' . implode('</li><li>', $errors) . '</li></ul></div>';
+}
+
+echo json_encode($response);
+exit;

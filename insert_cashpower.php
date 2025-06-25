@@ -1,6 +1,6 @@
 <?php
 session_start();
-include "../database.php";
+include "database.php";
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $amount = floatval($_POST['amount']);
@@ -8,6 +8,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     if ($unit <= 0) {
         $_SESSION['recharge_status'] = ['type' => 'danger', 'message' => 'Unit must be greater than zero.'];
+        header("Location: landlord_dashboard.php");
+        exit();
+    }
+
+    if ($unit > $amount) {
+        $_SESSION['recharge_status'] = ['type' => 'danger', 'message' => 'Recharge failed: Unit (kWh) cannot be greater than Amount (RWF).'];
         header("Location: landlord_dashboard.php");
         exit();
     }

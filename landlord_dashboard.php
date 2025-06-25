@@ -166,13 +166,14 @@ $stmtCashpower->close();
     <div class="sidebar d-none d-lg-block">
         <div class="d-flex flex-column p-3" style="height:80vh;">
             <h4 class="text-white mb-4"><i class="fas fa-user-shield me-2"></i> Welcome, <?php echo $tenant['name']; ?> </h4>
-            <a href="#welcome"><i class="fas fa-home"></i> Dashboard</a>
+            <!-- <a href="#welcome"><i class="fas fa-home"></i> Dashboard</a> -->
             <a href="#addTenant"><i class="fas fa-user-plus"></i> Add Tenant</a>
             <a href="#tenants"><i class="fas fa-list"></i> Tenants</a>
             <a href="#recharge"><i class="fas fa-sync"></i> Recharge</a>
             <a href="#recharge_list"><i class="fas fa-eye"></i> Recharge List</a>
             <a href="#distributed"><i class="fas fa-bolt"></i> Distribute Power</a>
             <a href="#transactions"><i class="fas fa-exchange-alt"></i> Transactions</a>
+            <a href="#powerStatus"><i class="fas fa-home"></i> powerStatus</a>
             <a href="#Comments"><i class="fas fa-comments"></i> View Comments</a> 
         </div>
     </div>
@@ -207,10 +208,14 @@ $stmtCashpower->close();
             
             <!-- Status Messages -->
             <?php
+
+                // session_start();
                 if (isset($_SESSION['distribute_status'])) {
                     echo $_SESSION['distribute_status'];
                     unset($_SESSION['distribute_status']);
                 }
+
+
                 if (isset($_SESSION['recharge_status'])) {
                     $status = $_SESSION['recharge_status'];
                     echo "<div class='alert alert-{$status['type']}' role='alert'>{$status['message']}</div>";
@@ -416,7 +421,28 @@ $stmtCashpower->close();
                     </table>
                 </div>
             </div>
-            
+            <!-- Add under any section -->
+            <div id="powerStatus" class="form-section">
+                <h4 class="section-header"><i class="fas fa-battery-three-quarters"></i> Tenant Power Usage</h4>
+                <table class="table table-bordered">
+                    <thead>
+                        <tr><th>Tenant ID</th><th>Current Power (kWh)</th><th>Status</th></tr>
+                    </thead>
+                    <tbody>
+                    <?php
+                    $res = $conn->query("SELECT t.name, p.tenant_id, p.current_kw, p.status FROM tenant_power p JOIN tenants t ON t.id = p.tenant_id WHERE t.landlord_id = $landlord_id");
+                    while ($row = $res->fetch_assoc()):
+                    ?>
+                    <tr>
+                        <td><?= htmlspecialchars($row['tenant_id']) ?> - <?= htmlspecialchars($row['name']) ?></td>
+                        <td><?= round($row['current_kw'], 2) ?></td>
+                        <td><span class="badge bg-<?= $row['status'] === 'connected' ? 'success' : 'danger' ?>"><?= ucfirst($row['status']) ?></span></td>
+                    </tr>
+                    <?php endwhile; ?>
+                    </tbody>
+                </table>
+            </div>
+
             <!-- Comments -->
             <div id="Comments" class="form-section">
                 <h4 class="section-header"><i class="fas fa-comments"></i> Comments from Tenants</h4>
@@ -479,27 +505,69 @@ $stmtCashpower->close();
             });
 
             // Handle form submission for distribute power
-            document.getElementById('distributeForm').addEventListener('submit', function(e) {
-                e.preventDefault();
-                const form = e.target;
-                const formData = new FormData(form);
+            // document.getElementById('distributeForm').addEventListener('submit', function(e) {
+            //     e.preventDefault();
+            //     const form = e.target;
+            //     const formData = new FormData(form);
 
-                fetch(form.action, {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(response => response.text())
-                .then(data => {
-                    // Show success message
-                    alert('Power distributed successfully!');
-                    // Reload the page to see changes
-                    window.location.reload();
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    alert('An error occurred while distributing power.');
-                });
-            });
+            //     fetch(form.action, {
+            //         method: 'POST',
+            //         body: formData
+            //     })
+            //     .then(response => response.text())
+            //     .then(data => {
+            //         // Show success message
+            //         alert('Power distributed successfully!');
+            //         // Reload the page to see changes
+            //         window.location.reload();
+            //     })
+            //     .catch(error => {
+            //         console.error('Error:', error);
+            //         alert('An error occurred while distributing power.');
+            //     });
+            // });
+document.getElementById('distributeForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    const form = e.target;
+    const formData = new FormData(form);
+
+    // Clear previous messages
+    const oldMessage = document.getElementById('distribute-status-message');
+    if (oldMessage) oldMessage.remove();
+
+    fetch(form.action, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error("Network response was not OK");
+        }
+        return response.json();
+    })
+    .then(data => {
+        const messageDiv = document.createElement('div');
+        messageDiv.id = 'distribute-status-message';
+        messageDiv.innerHTML = data.html;
+        document.getElementById('distributed').prepend(messageDiv);
+
+        if (data.success) {
+            form.reset();
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        const messageDiv = document.createElement('div');
+        messageDiv.id = 'distribute-status-message';
+        messageDiv.innerHTML = `
+            <div class="alert alert-danger">
+                <strong>❌ Server error:</strong> Unable to process the request. Please try again.
+            </div>`;
+        document.getElementById('distributed').prepend(messageDiv);
+    });
+});
+
+
         });
 
         // Function to add more tenant charge fields

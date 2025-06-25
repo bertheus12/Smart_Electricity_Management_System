@@ -1,24 +1,22 @@
 <?php
-$conn = new mysqli("localhost", "username", "password", "database");
+include 'database.php';
 
-if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['tenant_id'])) {
-    $tenant_id = $_GET['tenant_id'];
-    $sql = "SELECT balance FROM cashpower WHERE tenant_id = $tenant_id";
-    $result = $conn->query($sql);
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $tenant_id = $_POST['tenant_id'] ?? null;
+    $used_kw = $_POST['used_kw'] ?? null;
 
-    if ($row = $result->fetch_assoc()) {
-        echo json_encode(["balance" => $row['balance']]);
+    if ($tenant_id && $used_kw) {
+        $stmt = $conn->prepare("UPDATE tenant_power SET current_kw = current_kw - ? WHERE tenant_id = ?");
+        $stmt->bind_param("di", $used_kw, $tenant_id);
+        $stmt->execute();
+        $stmt->close();
+
+        echo "OK";
     } else {
-        echo json_encode(["error" => "Tenant not found"]);
+        http_response_code(400);
+        echo "Missing tenant_id or used_kw";
     }
-    exit;
-}
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['tenant_id'], $_POST['status'])) {
-    $tenant_id = $_POST['tenant_id'];
-    $status = $_POST['status']; // 0 = OFF, 1 = ON
-    $sql = "UPDATE tenants SET power_status = $status WHERE id = $tenant_id";
-    $conn->query($sql);
-    echo json_encode(["success" => true]);
+} else {
+    echo "Hardware API endpoint";
 }
 ?>
