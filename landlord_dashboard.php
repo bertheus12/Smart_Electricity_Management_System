@@ -187,244 +187,215 @@ $power = $conn->query("SELECT * FROM tenant_power");
         <div id="distributed" class="form-section">
             <?php
 
-                        // Fetch tenants for the landlord
-                        $tenants = [];
-                        $stmtTenants = $conn->prepare("SELECT id, name FROM tenants WHERE landlord_id = ?");
-                        $stmtTenants->bind_param("i", $landlord_id);
-                        $stmtTenants->execute();
-                        $resultTenants = $stmtTenants->get_result();
-                        while ($row = $resultTenants->fetch_assoc()) {
-                            $tenants[] = $row;
-                        }
-                        $stmtTenants->close();
+                // Fetch tenants for the landlord
+                $tenants = [];
+                $stmtTenants = $conn->prepare("SELECT id, name FROM tenants WHERE landlord_id = ?");
+                $stmtTenants->bind_param("i", $landlord_id);
+                $stmtTenants->execute();
+                $resultTenants = $stmtTenants->get_result();
+                while ($row = $resultTenants->fetch_assoc()) {
+                    $tenants[] = $row;
+                }
+                $stmtTenants->close();
 
-                        // Fetch available (unused) cashpower
-                        $cashpowers = [];
-                        $stmtCashpower = $conn->prepare("SELECT id, amount, unit, balance FROM cashpower WHERE balance > 0");
-                        if (!$stmtCashpower) die("Prepare failed (cashpower): " . $conn->error);
-                        $stmtCashpower->execute();
-                        $resultCashpower = $stmtCashpower->get_result();
-                        while ($row = $resultCashpower->fetch_assoc()) {
-                            $cashpowers[] = $row;
-                        }
-                        $stmtCashpower->close();
+                // Fetch available (unused) cashpower
+                $cashpowers = [];
+                $stmtCashpower = $conn->prepare("SELECT id, amount, unit, balance FROM cashpower WHERE balance > 0");
+                if (!$stmtCashpower) die("Prepare failed (cashpower): " . $conn->error);
+                $stmtCashpower->execute();
+                $resultCashpower = $stmtCashpower->get_result();
+                while ($row = $resultCashpower->fetch_assoc()) {
+                    $cashpowers[] = $row;
+                }
+                $stmtCashpower->close();
 
-                        // Handle form submission
-                        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-                            $cashpower_id = intval($_POST['cashpower_id']);
-                            $tenant_ids = $_POST['tenant_ids'] ?? [];
-                            $charges = $_POST['charges'] ?? [];
+                // Handle form submission
+                if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+                    $cashpower_id = intval($_POST['cashpower_id']);
+                    $tenant_ids = $_POST['tenant_ids'] ?? [];
+                    $charges = $_POST['charges'] ?? [];
 
-                            if ($cashpower_id <= 0 || empty($tenant_ids) || empty($charges) || count($tenant_ids) !== count($charges)) {
-                                $message = '<div style="color:red;">Invalid input. Please select valid tenants and charges.</div>';
+                    if ($cashpower_id <= 0 || empty($tenant_ids) || empty($charges) || count($tenant_ids) !== count($charges)) {
+                        $message = '<div style="color:red;">Invalid input. Please select valid tenants and charges.</div>';
+                    } else {
+                        // Get cashpower data
+                        $stmt = $conn->prepare("SELECT amount, unit, balance FROM cashpower WHERE id = ?");
+                        if (!$stmt) die("Prepare failed: " . $conn->error);
+                        $stmt->bind_param("i", $cashpower_id);
+                        $stmt->execute();
+                        $cashpower = $stmt->get_result()->fetch_assoc();
+                        $stmt->close();
+
+                        if (!$cashpower) {
+                            $message = '<div style="color:red;">Cashpower not found.</div>';
+                        } else {
+                            $amount = $cashpower['amount'];
+                            $unit = $cashpower['unit'];
+                            $balance = $cashpower['balance'];
+
+                            $total_charge = array_sum(array_map('floatval', $charges));
+                            if ($total_charge > $balance) {
+                                $message = '<div style="color:red;">Total charge exceeds available balance in cashpower.</div>';
                             } else {
-                                // Get cashpower data
-                                $stmt = $conn->prepare("SELECT amount, unit, balance FROM cashpower WHERE id = ?");
-                                if (!$stmt) die("Prepare failed: " . $conn->error);
-                                $stmt->bind_param("i", $cashpower_id);
-                                $stmt->execute();
-                                $cashpower = $stmt->get_result()->fetch_assoc();
-                                $stmt->close();
+                                $stmtInsert = $conn->prepare("INSERT INTO transactions (tenant_id, charge, kw, created_at) VALUES (?, ?, ?, NOW())");
+                                if (!$stmtInsert) die("Prepare failed (transaction insert): " . $conn->error);
 
-                                if (!$cashpower) {
-                                    $message = '<div style="color:red;">Cashpower not found.</div>';
-                                } else {
-                                    $amount = $cashpower['amount'];
-                                    $unit = $cashpower['unit'];
-                                    $balance = $cashpower['balance'];
+                                $stmtUpdateBalance = $conn->prepare("UPDATE cashpower SET balance = balance - ? WHERE id = ?");
+                                if (!$stmtUpdateBalance) die("Prepare failed (balance update): " . $conn->error);
 
-                                    $total_charge = array_sum(array_map('floatval', $charges));
-                                    if ($total_charge > $balance) {
-                                        $message = '<div style="color:red;">Total charge exceeds available balance in cashpower.</div>';
+                                $stmtUpdatePower = $conn->prepare("INSERT INTO tenant_power (tenant_id, current_kw, status) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE current_kw = current_kw + VALUES(current_kw), status = VALUES(status)");
+                                if (!$stmtUpdatePower) die("Prepare failed (tenant_power): " . $conn->error);
+
+                                $successCount = 0;
+                                $errors = [];
+
+                                for ($i = 0; $i < count($tenant_ids); $i++) {
+                                    $tenant_id = intval($tenant_ids[$i]);
+                                    $charge = floatval($charges[$i]);
+                                    $kw = ($unit * $charge) / $amount;
+
+                                    $stmtInsert->bind_param("idd", $tenant_id, $charge, $kw);
+                                    if ($stmtInsert->execute()) {
+                                        $stmtUpdateBalance->bind_param("di", $charge, $cashpower_id);
+                                        $stmtUpdateBalance->execute();
+
+                                        $status = $kw > 0 ? 'connected' : 'disconnected';
+                                        $stmtUpdatePower->bind_param("ids", $tenant_id, $kw, $status);
+                                        $stmtUpdatePower->execute();
+
+                                        $successCount++;
                                     } else {
-                                        $stmtInsert = $conn->prepare("INSERT INTO transactions (tenant_id, charge, kw, created_at) VALUES (?, ?, ?, NOW())");
-                                        if (!$stmtInsert) die("Prepare failed (transaction insert): " . $conn->error);
-
-                                        $stmtUpdateBalance = $conn->prepare("UPDATE cashpower SET balance = balance - ? WHERE id = ?");
-                                        if (!$stmtUpdateBalance) die("Prepare failed (balance update): " . $conn->error);
-
-                                        $stmtUpdatePower = $conn->prepare("INSERT INTO tenant_power (tenant_id, current_kw, status) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE current_kw = current_kw + VALUES(current_kw), status = VALUES(status)");
-                                        if (!$stmtUpdatePower) die("Prepare failed (tenant_power): " . $conn->error);
-
-                                        $successCount = 0;
-                                        $errors = [];
-
-                                        for ($i = 0; $i < count($tenant_ids); $i++) {
-                                            $tenant_id = intval($tenant_ids[$i]);
-                                            $charge = floatval($charges[$i]);
-                                            $kw = ($unit * $charge) / $amount;
-
-                                            $stmtInsert->bind_param("idd", $tenant_id, $charge, $kw);
-                                            if ($stmtInsert->execute()) {
-                                                $stmtUpdateBalance->bind_param("di", $charge, $cashpower_id);
-                                                $stmtUpdateBalance->execute();
-
-                                                $status = $kw > 0 ? 'connected' : 'disconnected';
-                                                $stmtUpdatePower->bind_param("ids", $tenant_id, $kw, $status);
-                                                $stmtUpdatePower->execute();
-
-                                                $successCount++;
-                                            } else {
-                                                $errors[] = "Error for tenant $tenant_id: " . htmlspecialchars($stmtInsert->error);
-                                            }
-                                        }
-
-                                        $stmtInsert->close();
-                                        $stmtUpdateBalance->close();
-                                        $stmtUpdatePower->close();
-
-                                        $message = "<div style='color:green;'>$successCount transaction(s) successful.</div>";
-                                        if ($errors) {
-                                            $message .= "<div style='color:red;'><ul><li>" . implode("</li><li>", $errors) . "</li></ul></div>";
-                                        }
+                                        $errors[] = "Error for tenant $tenant_id: " . htmlspecialchars($stmtInsert->error);
                                     }
+                                }
+
+                                $stmtInsert->close();
+                                $stmtUpdateBalance->close();
+                                $stmtUpdatePower->close();
+
+                                $message = "<div style='color:green;'>$successCount transaction(s) successful.</div>";
+                                if ($errors) {
+                                    $message .= "<div style='color:red;'><ul><li>" . implode("</li><li>", $errors) . "</li></ul></div>";
                                 }
                             }
                         }
-                        ?>
+                    }
+                }
+                ?>
 
 
-                        <h2>Distribute Power from Cashpower</h2>
-                        <?php if (!empty($message)) echo $message; ?>
+                <h2>Distribute Power from Cashpower</h2>
+                <?php if (!empty($message)) echo $message; ?>
 
-                        <!-- 👇 Place this style inside your <head> or before the form -->
-                        <style>
-                        /* Main form styling */
-                        .distribute-form {
-                            display: flex;
-                            flex-wrap: wrap;
-                            gap: 20px;
-                            padding: 20px;
-                            background: #f4f6f9;
-                            border-radius: 10px;
-                            border: 1px solid #ccc;
-                            font-family: Arial, sans-serif;
-                            margin-top: 20px;
-                        }
+                <!-- 👇 Place this style inside your <head> or before the form -->
+                <style>
+                /* Main form styling */
+                .distribute-form {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 20px;
+                    padding: 20px;
+                    background: #f4f6f9;
+                    border-radius: 10px;
+                    border: 1px solid #ccc;
+                    font-family: Arial, sans-serif;
+                    margin-top: 20px;
+                }
 
-                        /* Form group layout */
-                        .distribute-form .form-group {
-                            flex: 1 1 45%;
-                            min-width: 250px;
-                        }
+                /* Form group layout */
+                .distribute-form .form-group {
+                    flex: 1 1 45%;
+                    min-width: 250px;
+                }
 
-                        .distribute-form label {
-                            font-weight: bold;
-                            display: block;
-                            margin-bottom: 5px;
-                            color: #333;
-                        }
+                .distribute-form label {
+                    font-weight: bold;
+                    display: block;
+                    margin-bottom: 5px;
+                    color: #333;
+                }
 
-                        .distribute-form select,
-                        .distribute-form input[type="number"] {
-                            width: 100%;
-                            padding: 8px;
-                            border-radius: 6px;
-                            border: 1px solid #bbb;
-                            background: #fff;
-                            margin-bottom: 10px;
-                            box-sizing: border-box;
-                        }
+                .distribute-form select,
+                .distribute-form input[type="number"] {
+                    width: 100%;
+                    padding: 8px;
+                    border-radius: 6px;
+                    border: 1px solid #bbb;
+                    background: #fff;
+                    margin-bottom: 10px;
+                    box-sizing: border-box;
+                }
 
-                        /* Button styling */
-                        .distribute-form button {
-                            padding: 10px 16px;
-                            border: none;
-                            border-radius: 6px;
-                            font-weight: bold;
-                            cursor: pointer;
-                            margin-right: 10px;
-                        }
+                /* Button styling */
+                .distribute-form button {
+                    padding: 10px 16px;
+                    border: none;
+                    border-radius: 6px;
+                    font-weight: bold;
+                    cursor: pointer;
+                    margin-right: 10px;
+                }
 
-                        .distribute-form button[type="submit"] {
-                            background-color: #28a745;
-                            color: #fff;
-                        }
+                .distribute-form button[type="submit"] {
+                    background-color: #28a745;
+                    color: #fff;
+                }
 
-                        .distribute-form button[type="submit"]:hover {
-                            background-color: #218838;
-                        }
+                .distribute-form button[type="submit"]:hover {
+                    background-color: #218838;
+                }
 
-                        .distribute-form button[type="button"] {
-                            background-color: #007bff;
-                            color: #fff;
-                        }
+                .distribute-form button[type="button"] {
+                    background-color: #007bff;
+                    color: #fff;
+                }
 
-                        .distribute-form button[type="button"]:hover {
-                            background-color: #0056b3;
-                        }
+                .distribute-form button[type="button"]:hover {
+                    background-color: #0056b3;
+                }
 
-                        /* Added tenant charge block */
-                        #tenant-charge-container > div {
-                            background: #fff;
-                            border: 1px solid #ddd;
-                            padding: 15px;
-                            border-radius: 8px;
-                            margin-bottom: 15px;
-                        }
+                /* Added tenant charge block */
+                #tenant-charge-container > div {
+                    background: #fff;
+                    border: 1px solid #ddd;
+                    padding: 15px;
+                    border-radius: 8px;
+                    margin-bottom: 15px;
+                }
 
-                        /* Remove button inside added blocks */
-                        button.remove-btn {
-                            background-color: #dc3545;
-                            color: #fff;
-                            margin-top: 10px;
-                            border: none;
-                            padding: 8px 12px;
-                            border-radius: 6px;
-                            cursor: pointer;
-                        }
+                /* Remove button inside added blocks */
+                button.remove-btn {
+                    background-color: #dc3545;
+                    color: #fff;
+                    margin-top: 10px;
+                    border: none;
+                    padding: 8px 12px;
+                    border-radius: 6px;
+                    cursor: pointer;
+                }
 
-                        button.remove-btn:hover {
-                            background-color: #c82333;
-                        }
-                        </style>
+                button.remove-btn:hover {
+                    background-color: #c82333;
+                }
+                </style>
 
-                        <!-- 👇 Your actual form starts here -->
-                        <form method="POST" class="distribute-form">
-                            <div class="form-group">
-                                <label>Select Cashpower:</label>
-                                <select name="cashpower_id" required>
-                                    <option value="">-- Select Cashpower --</option>
-                                    <?php foreach ($cashpowers as $cp): ?>
-                                        <option value="<?= $cp['id'] ?>">
-                                            ID <?= $cp['id'] ?> - <?= $cp['unit'] ?> kWh - <?= $cp['balance'] ?> RWF remaining
-                                        </option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </div>
+                <!-- 👇 Your actual form starts here -->
+                <form method="POST" class="distribute-form">
+                    <div class="form-group">
+                        <label>Select Cashpower:</label>
+                        <select name="cashpower_id" required>
+                            <option value="">-- Select Cashpower --</option>
+                            <?php foreach ($cashpowers as $cp): ?>
+                                <option value="<?= $cp['id'] ?>">
+                                    ID <?= $cp['id'] ?> - <?= $cp['unit'] ?> kWh - <?= $cp['balance'] ?> RWF remaining
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
 
-                            <div class="form-group" style="flex: 1 1 100%;">
-                                <div id="tenant-charge-container">
-                                    <div>
-                                        <label>Tenant:</label>
-                                        <select name="tenant_ids[]" required>
-                                            <option value="">-- Select Tenant --</option>
-                                            <?php foreach ($tenants as $t): ?>
-                                                <option value="<?= $t['id'] ?>"> <?= htmlspecialchars($t['name']) ?> (ID <?= $t['id'] ?>)</option>
-                                            <?php endforeach; ?>
-                                        </select>
-
-                                        <label>Charge (RWF):</label>
-                                        <input type="number" name="charges[]" step="0.01" required>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="form-group">
-                                <button type="button" onclick="addTenantCharge()">➕ Add Another Tenant</button>
-                            </div>
-
-                            <div class="form-group">
-                                <button type="submit">🚀 Distribute</button>
-                            </div>
-                        </form>
-
-                        <!-- 👇 JavaScript to add tenant rows -->
-                        <script>
-                        function addTenantCharge() {
-                            const container = document.getElementById('tenant-charge-container');
-                            const div = document.createElement('div');
-                            div.innerHTML = `
+                    <div class="form-group" style="flex: 1 1 100%;">
+                        <div id="tenant-charge-container">
+                            <div>
                                 <label>Tenant:</label>
                                 <select name="tenant_ids[]" required>
                                     <option value="">-- Select Tenant --</option>
@@ -432,13 +403,42 @@ $power = $conn->query("SELECT * FROM tenant_power");
                                         <option value="<?= $t['id'] ?>"> <?= htmlspecialchars($t['name']) ?> (ID <?= $t['id'] ?>)</option>
                                     <?php endforeach; ?>
                                 </select>
+
                                 <label>Charge (RWF):</label>
                                 <input type="number" name="charges[]" step="0.01" required>
-                                <button type="button" class="remove-btn" onclick="this.parentNode.remove()">❌ Remove</button>
-                            `;
-                            container.appendChild(div);
-                        }
-                        </script>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <button type="button" onclick="addTenantCharge()">➕ Add Another Tenant</button>
+                    </div>
+
+                    <div class="form-group">
+                        <button type="submit">🚀 Distribute</button>
+                    </div>
+                </form>
+
+                <!-- 👇 JavaScript to add tenant rows -->
+                <script>
+                function addTenantCharge() {
+                    const container = document.getElementById('tenant-charge-container');
+                    const div = document.createElement('div');
+                    div.innerHTML = `
+                        <label>Tenant:</label>
+                        <select name="tenant_ids[]" required>
+                            <option value="">-- Select Tenant --</option>
+                            <?php foreach ($tenants as $t): ?>
+                                <option value="<?= $t['id'] ?>"> <?= htmlspecialchars($t['name']) ?> (ID <?= $t['id'] ?>)</option>
+                            <?php endforeach; ?>
+                        </select>
+                        <label>Charge (RWF):</label>
+                        <input type="number" name="charges[]" step="0.01" required>
+                        <button type="button" class="remove-btn" onclick="this.parentNode.remove()">❌ Remove</button>
+                    `;
+                    container.appendChild(div);
+                }
+                </script>
 
         </div>
 
