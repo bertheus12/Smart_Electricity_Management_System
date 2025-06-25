@@ -49,7 +49,7 @@ if (!preg_match('/^07[2839]\d{7}$/', $phone)) {
         $stmt->close();
 
         // Create cashpower record
-        $stmt2 = $conn->prepare("INSERT INTO cashpower (tenant_id, balance) VALUES (?, 0)");
+        $stmt2 = $conn->prepare("INSERT INTO tenant_power (tenant_id, current_kw) VALUES (?, 0)");
         $stmt2->bind_param("i", $tenant_id);
 
         if ($stmt2->execute()) {

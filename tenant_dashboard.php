@@ -9,9 +9,12 @@ if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'tenant') {
 
 $tenant_id = $_SESSION['user_id'];
 $tenant = $conn->query("SELECT * FROM tenants WHERE id = $tenant_id")->fetch_assoc();
-$balance = $conn->query("SELECT balance FROM cashpower WHERE tenant_id = $tenant_id")->fetch_assoc()['balance'];
+$result = $conn->query("SELECT SUM(charge) AS total FROM transactions WHERE tenant_id = $tenant_id");
+$row = $result->fetch_assoc();
+$balance = $row['total'] ?? 0; // use 0 if NULL
+
 $transactions = $conn->query("SELECT * FROM transactions WHERE tenant_id = $tenant_id ORDER BY created_at DESC");
-$kwh = $conn->query("SELECT kwh FROM cashpower WHERE tenant_id = $tenant_id")->fetch_assoc()['kwh'];
+$kwh = $conn->query("SELECT current_kw FROM tenant_power WHERE tenant_id = $tenant_id")->fetch_assoc()['current_kw'];
 $message = '';
 $active_section = 'welcome'; // default section
 
@@ -61,9 +64,10 @@ $comments = $conn->query("SELECT * FROM comments WHERE tenant_id = $tenant_id OR
   <div class="d-flex flex-column p-3" style="height:80vh;">
     <h4 class="text-white mb-4"><i class="fas fa-user-shield me-2"></i> Welcome, <?php echo $tenant['name']; ?> </h4>
     <a href="#" onclick="showSection('welcome')"><i class="fas fa-user-tie"></i> Your Status</a>
+    <a href="#" onclick="showSection('landlord')"><i class="fas fa-history"></i> Transaction History</a>
     <a href="#" onclick="showSection('addLandlord')"><i class="fas fa-comments"></i> Leave a Comment</a>
   
-    <a href="#" onclick="showSection('landlord')"><i class="fas fa-history"></i> Transaction History</a>
+    
   </div>
 </div>
 
